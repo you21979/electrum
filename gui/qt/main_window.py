@@ -1504,7 +1504,7 @@ class ElectrumWindow(QMainWindow, PrintError):
                     item.setExpanded(not item.isExpanded())
                 return
 
-        menu = QMenu()
+        menu = QMenu(self)
         if not multi_select:
             menu.addAction(_("Copy to clipboard"), lambda: self.app.clipboard().setText(addr))
             menu.addAction(_("Request payment"), lambda: self.receive_at(addr))
