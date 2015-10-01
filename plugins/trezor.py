@@ -86,7 +86,7 @@ class Plugin(BasePlugin):
                 return
             if wallet.addresses() and not wallet.check_proper_device():
                 QMessageBox.information(window, _('Error'), _("This wallet does not match your Trezor device"), _('OK'))
-            wallet.force_watching_only = True
+                wallet.force_watching_only = True
 
     def compare_version(self, client, major, minor=0, patch=0):
         features = client.features
