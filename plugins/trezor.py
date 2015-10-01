@@ -157,7 +157,7 @@ class Plugin(BasePlugin):
     def receive_menu(self, menu, addrs):
         window = menu.parent()
         wallet = window.wallet
-        if wallet in self.wallets() and not wallet.is_watching_only() and self.atleast_version(wallet.client, 1, 3) and len(addrs) == 1:
+        if wallet in self.wallets and not wallet.is_watching_only() and self.atleast_version(wallet.client, 1, 3) and len(addrs) == 1:
             menu.addAction(_("Show on TREZOR"), lambda: self.show_address(wallet, addrs[0]))
 
     def show_address(self, wallet, address):
