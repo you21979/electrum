@@ -35,7 +35,7 @@ from version import *
 from transaction import Transaction
 from plugins import run_hook
 import bitcoin
-from coinchooser import CoinChooser
+from coinchooser import CoinChooserClassic, CoinChooserPrivacy
 from synchronizer import Synchronizer
 from verifier import SPV
 from mnemonic import Mnemonic
@@ -156,7 +156,7 @@ class Abstract_Wallet(PrintError):
         self.network = None
         self.electrum_version = ELECTRUM_VERSION
         self.gap_limit_for_change = 6 # constant
-        self.coin_chooser = CoinChooser()
+        self.coin_chooser = CoinChooserPrivacy()
         # saved fields
         self.seed_version          = storage.get('seed_version', NEW_SEED_VERSION)
         self.use_change            = storage.get('use_change',True)

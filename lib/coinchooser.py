@@ -17,13 +17,18 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from collections import defaultdict, namedtuple
+from random import shuffle
 
-from util import NotEnoughFunds, PrintError, profiler
+from bitcoin import COIN
 from transaction import Transaction
+from util import NotEnoughFunds, PrintError, profiler
 
 Bucket = namedtuple('Bucket', ['desc', 'size', 'value', 'coins'])
 
 class CoinChooserBase(PrintError):
+
+    def keys(self, coins):
+        raise NotImplementedError
 
     def bucketize_coins(self, coins):
         keys = self.keys(coins)
@@ -78,7 +83,7 @@ class CoinChooserBase(PrintError):
 
         return tx
 
-class CoinChooser(CoinChooserBase):
+class CoinChooserClassic(CoinChooserBase):
     '''The original electrum algorithm.  Chooses coins starting with the
     oldest that are sufficient to cover the spent amount, and then
     removes any not needed starting with the smallest in value.'''
@@ -113,3 +118,77 @@ class CoinChooser(CoinChooserBase):
                 dropped.append(bucket)
 
         return [bucket for bucket in selected if bucket not in dropped]
+
+class CoinChooserRandom(CoinChooserBase):
+
+    def bucket_candidates(self, buckets, sufficient_funds):
+        '''Returns a list of bucket sets.'''
+        candidates = set()
+
+        # Add all singletons
+        for n, bucket in enumerate(buckets):
+            if sufficient_funds([bucket]):
+                candidates.add((n, ))
+
+        # And now some random ones
+        attempts = min(100, (len(buckets) - 1) * 10 + 1)
+        permutation = range(len(buckets))
+        for i in range(attempts):
+            # Get a random permutation of the buckets, and
+            # incrementally combine buckets until sufficient
+            shuffle(permutation)
+            bkts = []
+            for count, index in enumerate(permutation):
+                bkts.append(buckets[index])
+                if sufficient_funds(bkts):
+                    candidates.add(tuple(sorted(permutation[:count + 1])))
+                    break
+            else:
+                raise NotEnoughFunds()
+
+        return [[buckets[n] for n in candidate] for candidate in candidates]
+
+    def choose_buckets(self, buckets, spent_amount, fee):
+
+        def sufficient(buckets):
+            '''Given a set of buckets, return True if it has enough
+            value to pay for the transaction'''
+            total_input = sum(bucket.value for bucket in buckets)
+            total_size = sum(bucket.size for bucket in buckets)
+            return total_input >= spent_amount + fee(total_size)
+
+        candidates = self.bucket_candidates(buckets, sufficient)
+        penalties = [self.penalty(cand, spent_amount) for cand in candidates]
+        winner = candidates[penalties.index(min(penalties))]
+        self.print_error("Bucket sets:", len(buckets))
+        self.print_error("Winning penalty:", min(penalties))
+        return winner
+
+    def penalty(self, buckets, spent_amount):
+        '''Returns a penalty for a candidate set of buckets.'''
+        raise NotImplementedError
+
+class CoinChooserPrivacy(CoinChooserRandom):
+    '''An attempt at better preserving user privacy.
+
+    First, if any coin is spent from a user address, all coins are.
+    Compared to spending from other addresses to make up an amount,
+    this reduces information leakage about sender holdings.  It also
+    helps to reduce blockchain UTXO bloat, and reduce future privacy
+    loss that would come from reusing that address' remaining UTXOs.
+    Second, it penalizes change that is quite different to the sent
+    amount.  Third, it penalizes change that is too big.'''
+
+    def keys(self, coins):
+        return [coin['address'] for coin in coins]
+
+    def penalty(self, buckets, spent_amount):
+        badness = len(buckets) - 1
+        total_input = sum(bucket.value for bucket in buckets)
+        change = float(total_input - spent_amount)
+        # Penalize change not roughly equal to the spent amount
+        if change < spent_amount * 0.75 or change > spent_amount * 1.33:
+            badness += change / (spent_amount + 10000)
+        # Penalize large change; 5 BTC excess ~= using 1 more input
+        badness += change / (COIN * 5)
+        return badness
