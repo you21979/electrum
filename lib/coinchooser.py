@@ -44,39 +44,41 @@ class CoinChooserBase(PrintError):
 
         return map(make_Bucket, buckets.keys(), buckets.values())
 
+    def add_change(self, tx, change_addrs, fee_estimator, dust_threshold):
+        # How much is left if we add 1 change output?
+        change_amount = tx.get_fee() - fee_estimator(1)
+
+        # If change is above dust threshold after accounting for the
+        # size of the change output, add it to the transaction.
+        if change_amount > dust_threshold:
+            tx.outputs.append(('address', change_addrs[0], change_amount))
+            self.print_error('change', change_amount)
+        elif change_amount:
+            self.print_error('not keeping dust', change_amount)
+
     def make_tx(self, coins, outputs, change_addrs, fee_estimator,
                 dust_threshold):
         '''Select unspent coins to spend to pay outputs.  If the change is
         greater than dust_threshold (after adding the change output to
         the transaction) it is kept, otherwise none is sent and it is
         added to the transaction fee.'''
-        output_total = sum(map(lambda x: x[2], outputs))
-
-        # Size of the transaction with no inputs and no change
         tx = Transaction.from_io([], outputs)
+        # Size of the transaction with no inputs and no change
         base_size = tx.estimated_size()
         # Returns fee given input size
         fee = lambda input_size: fee_estimator(base_size + input_size)
 
         # Collect the coins into buckets, choose a subset of the buckets
         buckets = self.bucketize_coins(coins)
-        buckets = self.choose_buckets(buckets, output_total, fee)
+        buckets = self.choose_buckets(buckets, tx.output_value(), fee)
 
         tx.inputs = [coin for b in buckets for coin in b.coins]
-        input_total = sum(bucket.value for bucket in buckets)
         tx_size = base_size + sum(bucket.size for bucket in buckets)
 
-        # If change is above dust threshold after accounting for the
-        # size of the change output, add it to the transaction.
-        # Pay to bitcoin address serializes as 34 bytes
-        change_size = 34
-        fee = fee_estimator(tx_size + change_size)
-        change_amount = input_total - (output_total + fee)
-        if change_amount > dust_threshold:
-            tx.outputs.append(('address', change_addrs[0], change_amount))
-            self.print_error('change', change_amount)
-        elif change_amount:
-            self.print_error('not keeping dust', change_amount)
+        # This takes a count of change outputs and returns a tx fee;
+        # each pay-to-bitcoin-address output serializes as 34 bytes
+        fee = lambda count: fee_estimator(tx_size + count * 34)
+        self.add_change(tx, change_addrs, fee, dust_threshold)
 
         self.print_error("using %d inputs" % len(tx.inputs))
         self.print_error("using buckets:", [bucket.desc for bucket in buckets])
