@@ -27,6 +27,8 @@ Bucket = namedtuple('Bucket', ['desc', 'size', 'value', 'coins'])
 
 class CoinChooserBase(PrintError):
 
+    cache = (None, None, None, None, None)
+
     def keys(self, coins):
         raise NotImplementedError
 
@@ -62,7 +64,17 @@ class CoinChooserBase(PrintError):
         greater than dust_threshold (after adding the change output to
         the transaction) it is kept, otherwise none is sent and it is
         added to the transaction fee.'''
-        tx = Transaction.from_io([], outputs)
+
+        # Did we just calculate this?  If prior calculated a fee and
+        # this fixes it to the same, return same answer, to avoid random
+        # coin selection changing the answer
+        tx = self.cache[4]
+        if (self.cache[:4] == (coins, outputs, change_addrs, dust_threshold)
+            and tx.get_fee() == fee_estimator(tx.estimated_size())):
+            return tx
+
+        # Copy the ouputs so when adding change we don't modify "outputs"
+        tx = Transaction.from_io([], outputs[:])
         # Size of the transaction with no inputs and no change
         base_size = tx.estimated_size()
         # Returns fee given input size
@@ -82,6 +94,8 @@ class CoinChooserBase(PrintError):
 
         self.print_error("using %d inputs" % len(tx.inputs))
         self.print_error("using buckets:", [bucket.desc for bucket in buckets])
+
+        self.cache = (coins, outputs, change_addrs, dust_threshold, tx)
 
         return tx
 
