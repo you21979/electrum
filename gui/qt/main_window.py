@@ -43,7 +43,7 @@ from electrum.util import PrintError, NotEnoughFunds, StoreDict
 from electrum import Transaction
 from electrum import mnemonic
 from electrum import util, bitcoin, commands, Wallet
-from electrum import SimpleConfig, Wallet, WalletStorage
+from electrum import SimpleConfig, COIN_CHOOSERS, WalletStorage
 from electrum import Imported_Wallet
 from electrum import paymentrequest
 
@@ -2768,6 +2768,19 @@ class ElectrumWindow(QMainWindow, PrintError):
         can_edit_fees_cb.stateChanged.connect(on_editfees)
         can_edit_fees_cb.setToolTip(_('This option lets you edit fees in the send tab.'))
         tx_widgets.append((can_edit_fees_cb, None))
+
+        choosers = sorted(COIN_CHOOSERS.keys())
+        msg = _('Choose coin (UTXO) selection method.  The following are available:\n\n')
+        msg += '\n\n'.join(key + ": " + klass.__doc__
+                         for key, klass in COIN_CHOOSERS.items())
+        chooser_label = HelpLabel(_('Coin selection') + ':', msg)
+        chooser_combo = QComboBox()
+        chooser_combo.addItems(choosers)
+        chooser_combo.setCurrentIndex(choosers.index(self.wallet.coin_chooser_name))
+        def on_chooser(x):
+            self.wallet.set_coin_chooser(choosers[chooser_combo.currentIndex()])
+        chooser_combo.currentIndexChanged.connect(on_chooser)
+        tx_widgets.append((chooser_label, chooser_combo))
 
         tabs_info = [
             (tx_widgets, _('Transactions')),

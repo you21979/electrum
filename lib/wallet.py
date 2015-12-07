@@ -44,7 +44,8 @@ import paymentrequest
 
 # internal ID for imported account
 IMPORTED_ACCOUNT = '/x'
-
+COIN_CHOOSERS = { 'Classic': CoinChooserClassic,
+                  'Privacy': CoinChooserPrivacy }
 
 class WalletStorage(PrintError):
 
@@ -156,7 +157,6 @@ class Abstract_Wallet(PrintError):
         self.network = None
         self.electrum_version = ELECTRUM_VERSION
         self.gap_limit_for_change = 6 # constant
-        self.coin_chooser = CoinChooserPrivacy()
         # saved fields
         self.seed_version          = storage.get('seed_version', NEW_SEED_VERSION)
         self.use_change            = storage.get('use_change',True)
@@ -166,6 +166,7 @@ class Abstract_Wallet(PrintError):
         self.frozen_addresses      = set(storage.get('frozen_addresses',[]))
         self.stored_height         = storage.get('stored_height', 0)       # last known height (for offline mode)
         self.history               = storage.get('addr_history',{})        # address -> list(txid, height)
+        self.set_coin_chooser(storage.get('coin_chooser', None))
 
         # This attribute is set when wallet.start_threads is called.
         self.synchronizer = None
@@ -204,6 +205,13 @@ class Abstract_Wallet(PrintError):
 
     def diagnostic_name(self):
         return self.basename()
+
+    def set_coin_chooser(self, chooser_name):
+        if not chooser_name in COIN_CHOOSERS:
+            chooser_name = 'Classic'
+        self.coin_chooser_name = chooser_name
+        self.coin_chooser = COIN_CHOOSERS[chooser_name]()
+        self.storage.put('coin_chooser', chooser_name)
 
     @profiler
     def load_transactions(self):
