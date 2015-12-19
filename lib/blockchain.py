@@ -21,14 +21,20 @@ import os
 import util
 from bitcoin import *
 
-MAX_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+try:
+    from ltc_scrypt import getPoWHash
+except ImportError:
+    util.print_msg("Warning: ltc_scrypt not available, using fallback")
+    from scrypt import scrypt_1024_1_1_80 as getPoWHash
+
+MAX_TARGET = 0x00000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 class Blockchain(util.PrintError):
     '''Manages blockchain headers and their verification'''
     def __init__(self, config, network):
         self.config = config
         self.network = network
-        self.headers_url = "https://headers.electrum.org/blockchain_headers"
+        self.headers_url = 'https://example.com/blockchain_headers' # TODO
         self.local_height = 0
         self.set_local_height()
 
@@ -44,15 +50,15 @@ class Blockchain(util.PrintError):
         prev_hash = self.hash_header(prev_header)
         assert prev_hash == header.get('prev_block_hash'), "prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash'))
         assert bits == header.get('bits'), "bits mismatch: %s vs %s" % (bits, header.get('bits'))
-        _hash = self.hash_header(header)
-        assert int('0x' + _hash, 16) <= target, "insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target)
+        _hash = self.pow_hash_header(header) # TODO
+        # assert int('0x' + _hash, 16) <= target, "insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target)
 
     def verify_chain(self, chain):
         first_header = chain[0]
         prev_header = self.read_header(first_header.get('block_height') - 1)
         for header in chain:
             height = header.get('block_height')
-            bits, target = self.get_target(height / 2016, chain)
+            bits, target = self.get_target(height / 2016, chain) # TODO
             self.verify_header(header, prev_header, bits, target)
             prev_header = header
 
@@ -60,7 +66,7 @@ class Blockchain(util.PrintError):
         num = len(data) / 80
         prev_header = None
         if index != 0:
-            prev_header = self.read_header(index*2016 - 1)
+            prev_header = self.read_header(index*2016 - 1) # TODO
         bits, target = self.get_target(index)
         for i in range(num):
             raw_header = data[i*80:(i+1) * 80]
@@ -93,6 +99,9 @@ class Blockchain(util.PrintError):
             return '0' * 64
         return hash_encode(Hash(self.serialize_header(header).decode('hex')))
 
+    def pow_hash_header(self, header):
+        return hash_encode(getPoWHash(self.serialize_header(header).decode('hex')))
+
     def path(self):
         return os.path.join(self.config.path, 'blockchain_headers')
 
@@ -104,6 +113,7 @@ class Blockchain(util.PrintError):
             import urllib, socket
             socket.setdefaulttimeout(30)
             self.print_error("downloading ", self.headers_url)
+            raise
             urllib.urlretrieve(self.headers_url, filename)
             self.print_error("done.")
         except Exception:
@@ -149,12 +159,15 @@ class Blockchain(util.PrintError):
 
     def get_target(self, index, chain=None):
         if index == 0:
-            return 0x1d00ffff, MAX_TARGET
-        first = self.read_header((index-1) * 2016)
-        last = self.read_header(index*2016 - 1)
+            return 0x1e0ffff0, MAX_TARGET
+        if index == 1:
+            first = self.read_header(0)
+        else:
+            first = self.read_header((index-1) * 2016 - 1) # TODO
+        last = self.read_header(index*2016 - 1) # TODO
         if last is None:
             for h in chain:
-                if h.get('block_height') == index*2016 - 1:
+                if h.get('block_height') == index*2016 - 1: # TODO
                     last = h
         assert last is not None
         # bits to target
@@ -166,7 +179,7 @@ class Blockchain(util.PrintError):
         target = bitsBase << (8 * (bitsN-3))
         # new target
         nActualTimespan = last.get('timestamp') - first.get('timestamp')
-        nTargetTimespan = 14 * 24 * 60 * 60
+        nTargetTimespan = 84 * 60 * 60 # TODO
         nActualTimespan = max(nActualTimespan, nTargetTimespan / 4)
         nActualTimespan = min(nActualTimespan, nTargetTimespan * 4)
         new_target = min(MAX_TARGET, (target*nActualTimespan) / nTargetTimespan)
@@ -179,7 +192,7 @@ class Blockchain(util.PrintError):
             bitsN += 1
             bitsBase >>= 8
         new_bits = bitsN << 24 | bitsBase
-        return new_bits, bitsBase << (8 * (bitsN-3))
+        return new_bits, new_target
 
     def connect_header(self, chain, header):
         '''Builds a header chain until it connects.  Returns True if it has
