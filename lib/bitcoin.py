@@ -39,13 +39,13 @@ import pyaes
 # Bitcoin network constants
 TESTNET = False
 NOLNET = False
-ADDRTYPE_P2PKH = 0
+ADDRTYPE_P2PKH = 50
 ADDRTYPE_P2SH = 5
 ADDRTYPE_P2WPKH = 6
-XPRV_HEADER = 0x0488ade4
-XPUB_HEADER = 0x0488b21e
-HEADERS_URL = "https://headers.electrum.org/blockchain_headers"
-GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
+XPRV_HEADER = 0x019d9cfe
+XPUB_HEADER = 0x019da462
+HEADERS_URL = "https://example.com/blockchain_headers" # TODO
+GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f" # TODO
 
 def set_testnet():
     global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
@@ -56,10 +56,10 @@ def set_testnet():
     ADDRTYPE_P2PKH = 111
     ADDRTYPE_P2SH = 196
     ADDRTYPE_P2WPKH = 3
-    XPRV_HEADER = 0x04358394
-    XPUB_HEADER = 0x043587cf
-    HEADERS_URL = "https://headers.electrum.org/testnet_headers"
-    GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"
+    XPRV_HEADER = 0x0436ef7d
+    XPUB_HEADER = 0x0436f6e1
+    HEADERS_URL = "https://example.com/testnet_headers" # TODO
+    GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943" # TODO
 
 def set_nolnet():
     global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
@@ -67,13 +67,13 @@ def set_nolnet():
     global NOLNET, HEADERS_URL
     global GENESIS
     TESTNET = True
-    ADDRTYPE_P2PKH = 0
+    ADDRTYPE_P2PKH = 50
     ADDRTYPE_P2SH = 5
     ADDRTYPE_P2WPKH = 6
-    XPRV_HEADER = 0x0488ade4
-    XPUB_HEADER = 0x0488b21e
-    HEADERS_URL = "https://headers.electrum.org/nolnet_headers"
-    GENESIS = "663c88be18d07c45f87f910b93a1a71ed9ef1946cad50eb6a6f3af4c424625c6"
+    XPRV_HEADER = 0x019d9cfe
+    XPUB_HEADER = 0x019da462
+    HEADERS_URL = "https://example.com/nolnet_headers" # TODO
+    GENESIS = "663c88be18d07c45f87f910b93a1a71ed9ef1946cad50eb6a6f3af4c424625c6" # TODO
 
 
 
@@ -272,7 +272,7 @@ def hash_160(public_key):
     md.update(sha256(public_key))
     return md.digest()
 
-def hash_160_to_bc_address(h160, addrtype, witness_program_version=1):
+def hash_160_to_bc_address(h160, addrtype = 50, witness_program_version=1):
     s = chr(addrtype)
     if addrtype == ADDRTYPE_P2WPKH:
         s += chr(witness_program_version) + chr(0)
@@ -481,7 +481,7 @@ from ecdsa.util import string_to_number, number_to_string
 def msg_magic(message):
     varint = var_int(len(message))
     encoded_varint = "".join([chr(int(varint[i:i+2], 16)) for i in xrange(0, len(varint), 2)])
-    return "\x18Bitcoin Signed Message:\n" + encoded_varint + message
+    return "\x19Monacoin Signed Message:\n" + encoded_varint + message
 
 
 def verify_message(address, sig, message):

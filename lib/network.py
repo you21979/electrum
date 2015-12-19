@@ -43,7 +43,7 @@ from interface import Connection, Interface
 from blockchain import Blockchain
 from version import ELECTRUM_VERSION, PROTOCOL_VERSION
 
-DEFAULT_PORTS = {'t':'50001', 's':'50002'}
+DEFAULT_PORTS = {'t':'50001', 's':'50002'} # TODO
 
 #There is a schedule to move the default list to e-x (electrumx) by Jan 2018
 #Schedule is as follows:
@@ -51,26 +51,8 @@ DEFAULT_PORTS = {'t':'50001', 's':'50002'}
 #then gradually switch remaining nodes to e-x nodes
 
 DEFAULT_SERVERS = {
-    'erbium1.sytes.net':DEFAULT_PORTS,                  # core, e-x
-    'ecdsa.net':{'t':'50001', 's':'110'},               # core, e-x
-    'gh05.geekhosters.com':DEFAULT_PORTS,               # core, e-s
-    'VPS.hsmiths.com':DEFAULT_PORTS,                    # core, e-x
-    'electrum.anduck.net':DEFAULT_PORTS,                # core, e-s; banner with version pending
-    'electrum.no-ip.org':DEFAULT_PORTS,                 # core, e-s
-    'electrum.be':DEFAULT_PORTS,                        # core, e-x
-    'helicarrier.bauerj.eu':DEFAULT_PORTS,              # core, e-x
-    'elex01.blackpole.online':DEFAULT_PORTS,            # core, e-x
-    'electrumx.not.fyi':DEFAULT_PORTS,                  # core, e-x
-    'node.xbt.eu':DEFAULT_PORTS,                        # core, e-x
-    'kirsche.emzy.de':DEFAULT_PORTS,                    # core, e-x
-    'electrum.villocq.com':DEFAULT_PORTS,               # core?, e-s; banner with version recommended
-    'us11.einfachmalnettsein.de':DEFAULT_PORTS,         # core, e-x
-    'electrum.trouth.net':DEFAULT_PORTS,                # BU, e-s
-    'Electrum.hsmiths.com':{'t':'8080', 's':'995'},     # core, e-x
-    'electrum3.hachre.de':DEFAULT_PORTS,                # core, e-x
-    'b.1209k.com':DEFAULT_PORTS,                        # XT, jelectrum
-    'elec.luggs.co':{ 's':'443'},                       # core, e-x
-    'btc.smsys.me':{'t':'110', 's':'995'},              # BU, e-x
+    'mona-cce-1.coinomi.net': {'t':'5022'},
+    'mona-cce-2.coinomi.net': {'t':'5022'},
 }
 
 def set_testnet():
@@ -125,7 +107,7 @@ def parse_servers(result):
 
     return servers
 
-def filter_protocol(hostmap, protocol = 's'):
+def filter_protocol(hostmap, protocol = 't'):
     '''Filters the hostmap for those implementing protocol.
     The result is a list in serialized form.'''
     eligible = []
@@ -135,7 +117,7 @@ def filter_protocol(hostmap, protocol = 's'):
             eligible.append(serialize_server(host, port, protocol))
     return eligible
 
-def pick_random_server(hostmap = None, protocol = 's', exclude_set = set()):
+def pick_random_server(hostmap = None, protocol = 't', exclude_set = set()):
     if hostmap is None:
         hostmap = DEFAULT_SERVERS
     eligible = list(set(filter_protocol(hostmap, protocol)) - exclude_set)
