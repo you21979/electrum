@@ -239,7 +239,9 @@ class Blockchain(util.PrintError):
         bits = last.get('bits')
         bitsN = (bits >> 24) & 0xff
         if not (bitsN >= 0x03 and bitsN <= 0x1d):
-            raise BaseException("First part of bits should be in [0x03, 0x1d]")
+            # TODO
+            #raise BaseException("First part of bits should be in [0x03, 0x1d]")
+            pass
         bitsBase = bits & 0xffffff
         if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
             raise BaseException("Second part of bits should be in [0x8000, 0x7fffff]")
