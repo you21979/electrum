@@ -34,7 +34,7 @@ class Blockchain(util.PrintError):
     def __init__(self, config, network):
         self.config = config
         self.network = network
-        self.headers_url = 'https://example.com/blockchain_headers' # TODO
+        self.headers_url = 'https://wallet.sighash.info/electrum/mona/blockchain_headers'
         self.local_height = 0
         self.set_local_height()
 
@@ -113,7 +113,6 @@ class Blockchain(util.PrintError):
             import urllib, socket
             socket.setdefaulttimeout(30)
             self.print_error("downloading ", self.headers_url)
-            raise
             urllib.urlretrieve(self.headers_url, filename)
             self.print_error("done.")
         except Exception:
