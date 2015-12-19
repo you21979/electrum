@@ -6,7 +6,7 @@ import os
 from copy import deepcopy
 from util import user_dir, print_error, print_msg, print_stderr
 
-SYSTEM_CONFIG_PATH = "/etc/electrum.conf"
+SYSTEM_CONFIG_PATH = "/etc/electrum-ltc.conf"
 
 config = None
 
