@@ -49,7 +49,7 @@ class Blockchain(util.PrintError):
     def verify_header(self, header, prev_header, bits, target):
         prev_hash = self.hash_header(prev_header)
         assert prev_hash == header.get('prev_block_hash'), "prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash'))
-        assert bits == header.get('bits'), "bits mismatch: %s vs %s" % (bits, header.get('bits'))
+        #assert bits == header.get('bits'), "bits mismatch: %s vs %s" % (bits, header.get('bits')) # TODO
         _hash = self.pow_hash_header(header) # TODO
         # assert int('0x' + _hash, 16) <= target, "insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target)
 
@@ -173,7 +173,7 @@ class Blockchain(util.PrintError):
         # bits to target
         bits = last.get('bits')
         bitsN = (bits >> 24) & 0xff
-        assert bitsN >= 0x03 and bitsN <= 0x1d, "First part of bits should be in [0x03, 0x1d]"
+        #assert bitsN >= 0x03 and bitsN <= 0x1d, "First part of bits should be in [0x03, 0x1d]" # TODO
         bitsBase = bits & 0xffffff
         assert bitsBase >= 0x8000 and bitsBase <= 0x7fffff, "Second part of bits should be in [0x8000, 0x7fffff]"
         target = bitsBase << (8 * (bitsN-3))
