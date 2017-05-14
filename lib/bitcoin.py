@@ -45,7 +45,7 @@ ADDRTYPE_P2WPKH = 6
 XPRV_HEADER = 0x019d9cfe
 XPUB_HEADER = 0x019da462
 HEADERS_URL = "https://example.com/blockchain_headers" # TODO
-GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f" # TODO
+GENESIS = "ff9f1c0116d19de7c9963845e129f9ed1bfc0b376eb54fd7afa42e0d418c8bb6"
 
 def set_testnet():
     global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
@@ -59,7 +59,8 @@ def set_testnet():
     XPRV_HEADER = 0x0436ef7d
     XPUB_HEADER = 0x0436f6e1
     HEADERS_URL = "https://example.com/testnet_headers" # TODO
-    GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943" # TODO
+    GENESIS = "a2b106ceba3be0c6d097b2a6a6aacf9d638ba8258ae478158f449c321061e0b2"
+
 
 def set_nolnet():
     global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
@@ -73,7 +74,7 @@ def set_nolnet():
     XPRV_HEADER = 0x019d9cfe
     XPUB_HEADER = 0x019da462
     HEADERS_URL = "https://example.com/nolnet_headers" # TODO
-    GENESIS = "663c88be18d07c45f87f910b93a1a71ed9ef1946cad50eb6a6f3af4c424625c6" # TODO
+    GENESIS = "ff9f1c0116d19de7c9963845e129f9ed1bfc0b376eb54fd7afa42e0d418c8bb6"
 
 
 
