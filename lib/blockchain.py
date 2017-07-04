@@ -264,6 +264,7 @@ class Blockchain(util.PrintError):
         return new_bits, new_target
 
     def can_connect(self, header):
+        return True # TODO
         previous_height = header['block_height'] - 1
         previous_header = self.read_header(previous_height)
         if not previous_header:
