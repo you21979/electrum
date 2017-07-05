@@ -85,7 +85,9 @@ class Blockchain(util.PrintError):
         if bitcoin.TESTNET:
             return
         if bits != header.get('bits'):
-            raise BaseException("bits mismatch: %s vs %s" % (bits, header.get('bits')))
+            # TODO
+            #raise BaseException("bits mismatch: %s vs %s" % (bits, header.get('bits')))
+            pass
         if int('0x' + _hash, 16) > target:
             # TODO
             #raise BaseException("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))
@@ -264,7 +266,6 @@ class Blockchain(util.PrintError):
         return new_bits, new_target
 
     def can_connect(self, header):
-        return True # TODO
         previous_height = header['block_height'] - 1
         previous_header = self.read_header(previous_height)
         if not previous_header:
