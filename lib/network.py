@@ -53,6 +53,12 @@ DEFAULT_PORTS = {'t':'50001', 's':'50002'} # TODO
 DEFAULT_SERVERS = {
     'mona-cce-1.coinomi.net': {'t':'5022'},
     'mona-cce-2.coinomi.net': {'t':'5022'},
+
+    # http://askmona.org/5288
+    # https://mstdn.monappy.jp/@WakiyamaP/521192
+    'electrumx.tamami-foundation.org': {'t':'50001'},
+    #'153.126.146.182': {'t':'50001'},
+    #'153.126.146.182':DEFAULT_SERVERS,
 }
 
 def set_testnet():
