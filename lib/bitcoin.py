@@ -44,7 +44,7 @@ ADDRTYPE_P2SH = 5
 ADDRTYPE_P2WPKH = 6
 XPRV_HEADER = 0x019d9cfe
 XPUB_HEADER = 0x019da462
-HEADERS_URL = "https://example.com/blockchain_headers" # TODO
+HEADERS_URL = "https://sound.sighash.info/blockchain_headers"
 GENESIS = "ff9f1c0116d19de7c9963845e129f9ed1bfc0b376eb54fd7afa42e0d418c8bb6"
 
 def set_testnet():
