@@ -34,7 +34,7 @@ try:
     from ltc_scrypt import getPoWHash
 except ImportError:
     util.print_msg("Warning: ltc_scrypt not available, using fallback")
-    from scrypt import scrypt_1024_1_1_80 as getPoWHash
+    #from scrypt import scrypt_1024_1_1_80 as getPoWHash
 
 MAX_TARGET = 0x00000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
@@ -75,7 +75,7 @@ class Blockchain(util.PrintError):
 
     def verify_header(self, header, prev_header, bits, target):
         prev_hash = self.hash_header(prev_header)
-        _hash = self.pow_hash_header(header) # TODO
+        #_hash = self.pow_hash_header(header) # TODO
         if prev_hash != header.get('prev_block_hash'):
             raise BaseException("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if not self.pass_checkpoint(header):
@@ -88,10 +88,9 @@ class Blockchain(util.PrintError):
             # TODO
             #raise BaseException("bits mismatch: %s vs %s" % (bits, header.get('bits')))
             pass
-        if int('0x' + _hash, 16) > target:
+        #if int('0x' + _hash, 16) > target:
             # TODO
             #raise BaseException("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))
-            pass
 
     def verify_chain(self, chain):
         first_header = chain[0]
