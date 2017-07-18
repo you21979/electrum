@@ -58,10 +58,10 @@ DEFAULT_SERVERS = {
     # https://mstdn.monappy.jp/@WakiyamaP/521192
     'electrumx.tamami-foundation.org': {'t':'50001'},
     #'153.126.146.182': {'t':'50001'},
-    #'153.126.146.182':DEFAULT_SERVERS,
+    #'153.126.146.182':DEFAULT_PORTS,
 
     # https://mstdn.monappy.jp/@WakiyamaP/690841
-    '153.126.139.67':DEFAULT_SERVERS,
+    '153.126.139.67':DEFAULT_PORTS,
 }
 
 def set_testnet():
