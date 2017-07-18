@@ -83,7 +83,7 @@ def check_imports():
     except Exception:
         sys.exit("cannot import ecdsa.curve_secp256k1. You probably need to upgrade ecdsa.\nTry: sudo pip install --upgrade ecdsa")
     # make sure that certificates are here
-    assert os.path.exists(requests.utils.DEFAULT_CA_BUNDLE_PATH)
+    #assert os.path.exists(requests.utils.DEFAULT_CA_BUNDLE_PATH)
 
 
 if not is_android:
