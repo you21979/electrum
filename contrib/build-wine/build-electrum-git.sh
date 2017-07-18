@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # You probably need to update only this link
-ELECTRUM_GIT_URL=git://github.com/spesmilo/electrum.git
-BRANCH=master
-NAME_ROOT=electrum
+ELECTRUM_GIT_URL=git://github.com/ohac/electrum.git
+BRANCH=monacoin-20170714
+NAME_ROOT=electrum-mona
 
 
 # These settings probably don't need any change
