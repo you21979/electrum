@@ -58,6 +58,12 @@ mv PyInstaller-2.1 $WINEPREFIX/drive_c/pyinstaller
 # install Cryptodome
 $PYTHON -m pip install pycryptodomex
 
+$PYTHON -m pip install urllib3
+$PYTHON -m pip install chardet
+$PYTHON -m pip install certifi
+$PYTHON -m pip install idna
+$PYTHON -m pip install win_inet_pton
+
 # Install setuptools
 wget -O setuptools.exe "$SETUPTOOLS_URL"
 wine setuptools.exe
