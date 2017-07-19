@@ -3,25 +3,32 @@
 # Electrum - lightweight Bitcoin client
 # Copyright (C) 2014 Thomas Voegtlin
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import base64
 import urllib
 import sys
 import requests
 
-from PyQt4.QtGui import QMessageBox, QApplication, QPushButton
+from PyQt4.QtGui import QApplication, QPushButton
 
 from electrum.plugins import BasePlugin, hook
 from electrum.i18n import _
@@ -65,7 +72,7 @@ class Plugin(BasePlugin):
                     'to verify that transaction is instant.\n'
                     'Please enter your password to sign a\n'
                     'verification request.')
-            password = window.password_dialog(msg)
+            password = window.password_dialog(msg, parent=d)
             if not password:
                 return
         try:
@@ -84,14 +91,12 @@ class Plugin(BasePlugin):
 
             # 3. display the result
             if response.get('verified'):
-                QMessageBox.information(None, _('Verification successful!'),
-                    _('%s is covered by GreenAddress instant confirmation') % (tx.hash()), _('OK'))
+                d.show_message(_('%s is covered by GreenAddress instant confirmation') % (tx.hash()), title=_('Verification successful!'))
             else:
-                QMessageBox.critical(None, _('Verification failed!'),
-                    _('%s is not covered by GreenAddress instant confirmation') % (tx.hash()), _('OK'))
+                d.show_critical(_('%s is not covered by GreenAddress instant confirmation') % (tx.hash()), title=_('Verification failed!'))
         except BaseException as e:
             import traceback
             traceback.print_exc(file=sys.stdout)
-            QMessageBox.information(None, _('Error'), str(e), _('OK'))
+            d.show_error(str(e))
         finally:
             d.verify_button.setText(self.button_label)

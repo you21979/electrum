@@ -5,7 +5,6 @@ import json
 import sys
 import traceback
 
-import aes
 import base64
 
 import electrum
@@ -19,7 +18,7 @@ class LabelsPlugin(BasePlugin):
 
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
-        self.target_host = 'sync.bytesized-hosting.com:9090'
+        self.target_host = 'labels.bauerj.eu'
         self.wallets = {}
 
     def encode(self, wallet, msg):
@@ -42,9 +41,9 @@ class LabelsPlugin(BasePlugin):
             self.set_nonce(wallet, nonce)
         return nonce
 
-    def set_nonce(self, wallet, nonce, force_write=True):
+    def set_nonce(self, wallet, nonce):
         self.print_error("set", wallet.basename(), "nonce to", nonce)
-        wallet.storage.put("wallet_nonce", nonce, force_write)
+        wallet.storage.put("wallet_nonce", nonce)
 
     @hook
     def set_label(self, wallet, item, label):
@@ -61,7 +60,7 @@ class LabelsPlugin(BasePlugin):
         t.setDaemon(True)
         t.start()
         # Caller will write the wallet
-        self.set_nonce(wallet, nonce + 1, force_write=False)
+        self.set_nonce(wallet, nonce + 1)
 
     def do_request(self, method, url = "/labels", is_batch=False, data=None):
         url = 'https://' + self.target_host + url
@@ -125,8 +124,8 @@ class LabelsPlugin(BasePlugin):
 
             self.print_error("received %d labels" % len(response))
             # do not write to disk because we're in a daemon thread
-            wallet.storage.put('labels', wallet.labels, False)
-            self.set_nonce(wallet, response["nonce"] + 1, False)
+            wallet.storage.put('labels', wallet.labels)
+            self.set_nonce(wallet, response["nonce"] + 1)
             self.on_pulled(wallet)
 
         except Exception as e:
@@ -136,7 +135,7 @@ class LabelsPlugin(BasePlugin):
     def start_wallet(self, wallet):
         nonce = self.get_nonce(wallet)
         self.print_error("wallet", wallet.basename(), "nonce is", nonce)
-        mpk = ''.join(sorted(wallet.get_master_public_keys().values()))
+        mpk = wallet.get_fingerprint()
         if not mpk:
             return
         password = hashlib.sha1(mpk).digest().encode('hex')[:32]

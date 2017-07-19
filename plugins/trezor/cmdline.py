@@ -1,10 +1,9 @@
 from trezor import TrezorPlugin
 from electrum.util import print_msg
-from electrum.plugins import hook
 
 class TrezorCmdLineHandler:
 
-    def get_passphrase(self, msg):
+    def get_passphrase(self, msg, confirm):
         import getpass
         print_msg(msg)
         return getpass.getpass('')
@@ -24,11 +23,4 @@ class TrezorCmdLineHandler:
 
 
 class Plugin(TrezorPlugin):
-
-    @hook
-    def cmdline_load_wallet(self, wallet):
-        self.wallet = wallet
-        self.wallet.plugin = self
-        if self.handler is None:
-            self.handler = TrezorCmdLineHandler()
-
+    handler = TrezorCmdLineHandler()

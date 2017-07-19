@@ -3,27 +3,32 @@
 # Electrum - Lightweight Bitcoin Client
 # Copyright (C) 2015 Thomas Voegtlin
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 from __future__ import absolute_import
 
-import socket
 import time
 import threading
 import base64
-from decimal import Decimal
-from Queue import Queue
+from functools import partial
 
 import smtplib
 import imaplib
@@ -37,12 +42,11 @@ from PyQt4.QtCore import *
 import PyQt4.QtCore as QtCore
 import PyQt4.QtGui as QtGui
 
-from electrum.paymentrequest import PR_UNPAID, PR_PAID, PR_EXPIRED
 from electrum.plugins import BasePlugin, hook
-from electrum import util
 from electrum.paymentrequest import PaymentRequest
 from electrum.i18n import _
-from electrum_gui.qt.util import text_dialog, EnterButton
+from electrum_gui.qt.util import EnterButton, Buttons, CloseButton
+from electrum_gui.qt.util import OkButton, WindowModalDialog
 
 
 
@@ -166,14 +170,10 @@ class Plugin(BasePlugin):
         return True
 
     def settings_widget(self, window):
-        self.settings_window = window
-        return EnterButton(_('Settings'), self.settings_dialog)
+        return EnterButton(_('Settings'), partial(self.settings_dialog, window))
 
-    def settings_dialog(self, x):
-        from electrum_gui.qt.util import Buttons, CloseButton, OkButton
-
-        d = QDialog(self.settings_window)
-        d.setWindowTitle("Email settings")
+    def settings_dialog(self, window):
+        d = WindowModalDialog(window, _("Email settings"))
         d.setMinimumSize(500, 200)
 
         vbox = QVBoxLayout(d)

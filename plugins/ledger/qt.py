@@ -1,70 +1,77 @@
-from PyQt4.Qt import QApplication, QMessageBox, QDialog, QInputDialog, QLineEdit, QVBoxLayout, QLabel, QThread, SIGNAL
+import threading
+
+from PyQt4.Qt import (QDialog, QInputDialog, QLineEdit,
+                      QVBoxLayout, QLabel, SIGNAL)
 import PyQt4.QtCore as QtCore
 
-from electrum_gui.qt.password_dialog import make_password_dialog, run_password_dialog
-from electrum.plugins import BasePlugin, hook
+from electrum.i18n import _
+from .ledger import LedgerPlugin
+from ..hw_wallet.qt import QtHandlerBase, QtPluginBase
+from electrum_gui.qt.util import *
 
-from ledger import LedgerPlugin
+from btchip.btchipPersoWizard import StartBTChipPersoDialog
 
-class Plugin(LedgerPlugin):
+class Plugin(LedgerPlugin, QtPluginBase):
+    icon_unpaired = ":icons/ledger_unpaired.png"
+    icon_paired = ":icons/ledger.png"
 
-    @hook
-    def load_wallet(self, wallet, window):
-        self.wallet = wallet
-        self.wallet.plugin = self
-        if self.handler is None:
-            self.handler = BTChipQTHandler(window)
-        if self.btchip_is_connected():
-            if not self.wallet.check_proper_device():
-                QMessageBox.information(window, _('Error'), _("This wallet does not match your Ledger device"), _('OK'))
-                self.wallet.force_watching_only = True
-        else:
-            QMessageBox.information(window, _('Error'), _("Ledger device not detected.\nContinuing in watching-only mode."), _('OK'))
-            self.wallet.force_watching_only = True
+    def create_handler(self, window):
+        return Ledger_Handler(window)
 
-
-class BTChipQTHandler:
+class Ledger_Handler(QtHandlerBase):
+    setup_signal = pyqtSignal()
+    auth_signal = pyqtSignal(object)
 
     def __init__(self, win):
-        self.win = win
-        self.win.connect(win, SIGNAL('btchip_done'), self.dialog_stop)
-        self.win.connect(win, SIGNAL('btchip_message_dialog'), self.message_dialog)
-        self.win.connect(win, SIGNAL('btchip_auth_dialog'), self.auth_dialog)
-        self.done = threading.Event()
+        super(Ledger_Handler, self).__init__(win, 'Ledger')
+        self.setup_signal.connect(self.setup_dialog)
+        self.auth_signal.connect(self.auth_dialog)
 
-    def stop(self):
-        self.win.emit(SIGNAL('btchip_done'))
-
-    def show_message(self, msg):
-        self.message = msg
-        self.win.emit(SIGNAL('btchip_message_dialog'))
-
-    def prompt_auth(self, msg):
-        self.done.clear()
-        self.message = msg
-        self.win.emit(SIGNAL('btchip_auth_dialog'))
-        self.done.wait()
-        return self.response
-
-    def auth_dialog(self):
-        response = QInputDialog.getText(None, "Ledger Wallet Authentication", self.message, QLineEdit.Password)
+    def word_dialog(self, msg):
+        response = QInputDialog.getText(self.top_level_window(), "Ledger Wallet Authentication", msg, QLineEdit.Password)
         if not response[1]:
-            self.response = None
+            self.word = None
         else:
-            self.response = str(response[0])
+            self.word = str(response[0])
         self.done.set()
-
-    def message_dialog(self):
-        self.d = QDialog()
-        self.d.setModal(1)
-        self.d.setWindowTitle('Ledger')
-        self.d.setWindowFlags(self.d.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
-        l = QLabel(self.message)
-        vbox = QVBoxLayout(self.d)
+    
+    def message_dialog(self, msg):
+        self.clear_dialog()
+        self.dialog = dialog = WindowModalDialog(self.top_level_window(), _("Ledger Status"))
+        l = QLabel(msg)
+        vbox = QVBoxLayout(dialog)
         vbox.addWidget(l)
-        self.d.show()
+        dialog.show()
 
-    def dialog_stop(self):
-        if self.d is not None:
-            self.d.hide()
-            self.d = None
+    def auth_dialog(self, data):
+        try:
+            from .auth2fa import LedgerAuthDialog
+        except ImportError as e:
+            self.message_dialog(str(e))
+            return
+        dialog = LedgerAuthDialog(self, data)
+        dialog.exec_()
+        self.word = dialog.pin
+        self.done.set()
+                    
+    def get_auth(self, data):
+        self.done.clear()
+        self.auth_signal.emit(data)
+        self.done.wait()
+        return self.word
+        
+    def get_setup(self):
+        self.done.clear()
+        self.setup_signal.emit()
+        self.done.wait()
+        return 
+        
+    def setup_dialog(self):
+        dialog = StartBTChipPersoDialog()
+        dialog.exec_()
+
+
+        
+        
+        
+        

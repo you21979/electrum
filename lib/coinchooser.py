@@ -1,28 +1,73 @@
 #!/usr/bin/env python
 #
 # Electrum - lightweight Bitcoin client
-# Copyright (C) 2011 thomasv@gitorious
+# Copyright (C) 2015 kyuupichan@gmail
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 from collections import defaultdict, namedtuple
-from random import choice, randint, shuffle
 from math import floor, log10
 
-from bitcoin import COIN
+from bitcoin import sha256, COIN, TYPE_ADDRESS
 from transaction import Transaction
 from util import NotEnoughFunds, PrintError, profiler
+
+# A simple deterministic PRNG.  Used to deterministically shuffle a
+# set of coins - the same set of coins should produce the same output.
+# Although choosing UTXOs "randomly" we want it to be deterministic,
+# so if sending twice from the same UTXO set we choose the same UTXOs
+# to spend.  This prevents attacks on users by malicious or stale
+# servers.
+
+class PRNG:
+    def __init__(self, seed):
+        self.sha = sha256(seed)
+        self.pool = bytearray()
+
+    def get_bytes(self, n):
+        while len(self.pool) < n:
+            self.pool.extend(self.sha)
+            self.sha = sha256(self.sha)
+        result, self.pool = self.pool[:n], self.pool[n:]
+        return result
+
+    def randint(self, start, end):
+        # Returns random integer in [start, end)
+        n = end - start
+        r = 0
+        p = 1
+        while p < n:
+            r = self.get_bytes(1)[0] + (r << 8)
+            p = p << 8
+        return start + (r % n)
+
+    def choice(self, seq):
+        return seq[self.randint(0, len(seq))]
+
+    def shuffle(self, x):
+        for i in reversed(xrange(1, len(x))):
+            # pick an element in x[:i+1] with which to exchange x[i]
+            j = self.randint(0, i+1)
+            x[i], x[j] = x[j], x[i]
+
 
 Bucket = namedtuple('Bucket', ['desc', 'size', 'value', 'coins'])
 
@@ -60,17 +105,61 @@ class CoinChooserBase(PrintError):
         return penalty
 
     def change_amounts(self, tx, count, fee_estimator, dust_threshold):
-        # The amount left after adding 1 change output
-        return [tx.get_fee() - fee_estimator(1)]
+        # Break change up if bigger than max_change
+        output_amounts = [o[2] for o in tx.outputs()]
+        # Don't split change of less than 0.02 BTC
+        max_change = max(max(output_amounts) * 1.25, 0.02 * COIN)
+
+        # Use N change outputs
+        for n in range(1, count + 1):
+            # How much is left if we add this many change outputs?
+            change_amount = max(0, tx.get_fee() - fee_estimator(n))
+            if change_amount // n <= max_change:
+                break
+
+        # Get a handle on the precision of the output amounts; round our
+        # change to look similar
+        def trailing_zeroes(val):
+            s = str(val)
+            return len(s) - len(s.rstrip('0'))
+
+        zeroes = map(trailing_zeroes, output_amounts)
+        min_zeroes = min(zeroes)
+        max_zeroes = max(zeroes)
+        zeroes = range(max(0, min_zeroes - 1), (max_zeroes + 1) + 1)
+
+        # Calculate change; randomize it a bit if using more than 1 output
+        remaining = change_amount
+        amounts = []
+        while n > 1:
+            average = remaining // n
+            amount = self.p.randint(int(average * 0.7), int(average * 1.3))
+            precision = min(self.p.choice(zeroes), int(floor(log10(amount))))
+            amount = int(round(amount, -precision))
+            amounts.append(amount)
+            remaining -= amount
+            n -= 1
+
+        # Last change output.  Round down to maximum precision but lose
+        # no more than 100 satoshis to fees (2dp)
+        N = pow(10, min(2, zeroes[0]))
+        amount = (remaining // N) * N
+        amounts.append(amount)
+
+        assert sum(amounts) <= change_amount
+
+        return amounts
 
     def change_outputs(self, tx, change_addrs, fee_estimator, dust_threshold):
         amounts = self.change_amounts(tx, len(change_addrs), fee_estimator,
                                       dust_threshold)
+        assert min(amounts) >= 0
+        assert len(change_addrs) >= len(amounts)
         # If change is above dust threshold after accounting for the
         # size of the change output, add it to the transaction.
         dust = sum(amount for amount in amounts if amount < dust_threshold)
         amounts = [amount for amount in amounts if amount >= dust_threshold]
-        change = [('address', addr, amount)
+        change = [(TYPE_ADDRESS, addr, amount)
                   for addr, amount in zip(change_addrs, amounts)]
         self.print_error('change:', change)
         if dust:
@@ -83,6 +172,10 @@ class CoinChooserBase(PrintError):
         greater than dust_threshold (after adding the change output to
         the transaction) it is kept, otherwise none is sent and it is
         added to the transaction fee.'''
+
+        # Deterministic randomness from coins
+        utxos = [c['prevout_hash'] + str(c['prevout_n']) for c in coins]
+        self.p = PRNG(''.join(sorted(utxos)))
 
         # Copy the ouputs so when adding change we don't modify "outputs"
         tx = Transaction.from_io([], outputs[:])
@@ -102,24 +195,26 @@ class CoinChooserBase(PrintError):
         buckets = self.choose_buckets(buckets, sufficient_funds,
                                       self.penalty_func(tx))
 
-        tx.inputs = [coin for b in buckets for coin in b.coins]
+        tx.add_inputs([coin for b in buckets for coin in b.coins])
         tx_size = base_size + sum(bucket.size for bucket in buckets)
 
         # This takes a count of change outputs and returns a tx fee;
         # each pay-to-bitcoin-address output serializes as 34 bytes
         fee = lambda count: fee_estimator(tx_size + count * 34)
         change = self.change_outputs(tx, change_addrs, fee, dust_threshold)
-        tx.outputs.extend(change)
+        tx.add_outputs(change)
 
-        self.print_error("using %d inputs" % len(tx.inputs))
+        self.print_error("using %d inputs" % len(tx.inputs()))
         self.print_error("using buckets:", [bucket.desc for bucket in buckets])
 
         return tx
 
 class CoinChooserOldestFirst(CoinChooserBase):
-    '''The classic electrum algorithm.  Chooses coins starting with the
-    oldest that are sufficient to cover the spent amount, and then
-    removes any unneeded starting with the smallest in value.'''
+    '''Maximize transaction priority. Select the oldest unspent
+    transaction outputs in your wallet, that are sufficient to cover
+    the spent amount. Then, remove any unneeded inputs, starting with
+    the smallest in value.
+    '''
 
     def keys(self, coins):
         return [coin['prevout_hash'] + ':' + str(coin['prevout_n'])
@@ -128,7 +223,7 @@ class CoinChooserOldestFirst(CoinChooserBase):
     def choose_buckets(self, buckets, sufficient_funds, penalty_func):
         '''Spend the oldest buckets first.'''
         # Unconfirmed coins are young, not old
-        adj_height = lambda height: 99999999 if height == 0 else height
+        adj_height = lambda height: 99999999 if height <= 0 else height
         buckets.sort(key = lambda b: max(adj_height(coin['height'])
                                          for coin in b.coins))
         selected = []
@@ -156,7 +251,7 @@ class CoinChooserRandom(CoinChooserBase):
         for i in range(attempts):
             # Get a random permutation of the buckets, and
             # incrementally combine buckets until sufficient
-            shuffle(permutation)
+            self.p.shuffle(permutation)
             bkts = []
             for count, index in enumerate(permutation):
                 bkts.append(buckets[index])
@@ -185,24 +280,15 @@ class CoinChooserPrivacy(CoinChooserRandom):
     reduce blockchain UTXO bloat, and reduce future privacy loss that
     would come from reusing that address' remaining UTXOs.  Second, it
     penalizes change that is quite different to the sent amount.
-    Third, it penalizes change that is too big. Fourth, it breaks
-    large change up into amounts comparable to the spent amount.
-    Finally, change is rounded to similar precision to sent amounts.
-    Extra change outputs and rounding might raise the transaction fee
-    slightly.  Transaction priority might be less than if older coins
-    were chosen.'''
+    Third, it penalizes change that is too big.'''
 
     def keys(self, coins):
         return [coin['address'] for coin in coins]
 
-    def penalty_func(self, buckets, tx):
-        '''Returns a penalty for a candidate set of buckets.'''
-        raise NotImplementedError
-
     def penalty_func(self, tx):
-        min_change = min(o[2] for o in tx.outputs) * 0.75
-        max_change = max(o[2] for o in tx.outputs) * 1.33
-        spent_amount = sum(o[2] for o in tx.outputs)
+        min_change = min(o[2] for o in tx.outputs()) * 0.75
+        max_change = max(o[2] for o in tx.outputs()) * 1.33
+        spent_amount = sum(o[2] for o in tx.outputs())
 
         def penalty(buckets):
             badness = len(buckets) - 1
@@ -219,57 +305,16 @@ class CoinChooserPrivacy(CoinChooserRandom):
 
         return penalty
 
-    def change_amounts(self, tx, count, fee_estimator, dust_threshold):
 
-        # Break change up if bigger than max_change
-        output_amounts = [o[2] for o in tx.outputs]
-        max_change = max(max(output_amounts) * 1.25, dust_threshold * 10)
-
-        # Use N change outputs
-        for n in range(1, count + 1):
-            # How much is left if we add this many change outputs?
-            change_amount = tx.get_fee() - fee_estimator(n)
-            if change_amount // n < max_change:
-                break
-
-        # Get a handle on the precision of the output amounts; round our
-        # change to look similar
-        def trailing_zeroes(val):
-            s = str(val)
-            return len(s) - len(s.rstrip('0'))
-
-        zeroes = map(trailing_zeroes, output_amounts)
-        min_zeroes = min(zeroes)
-        max_zeroes = max(zeroes)
-        zeroes = range(max(0, min_zeroes - 1), (max_zeroes + 1) + 1)
-
-        # Calculate change; randomize it a bit if using more than 1 output
-        remaining = change_amount
-        amounts = []
-        while n > 1:
-            average = remaining // n
-            amount = randint(int(average * 0.7), int(average * 1.3))
-            precision = min(choice(zeroes), int(floor(log10(amount))))
-            amount = int(round(amount, -precision))
-            amounts.append(amount)
-            remaining -= amount
-            n -= 1
-
-        # Last change output.  Round down to maximum precision but lose
-        # no more than 100 satoshis to fees (2dp)
-        amount = remaining
-        N = min(2, zeroes[0])
-        if N:
-            amount = int(round(amount, -N))
-            if amount > remaining:
-                amount -= pow(10, N)
-        amounts.append(amount)
-
-        assert sum(amounts) <= change_amount
-        assert min(amounts) >= 0
-
-        return amounts
-
-
-COIN_CHOOSERS = {'Oldest First': CoinChooserOldestFirst,
+COIN_CHOOSERS = {'Priority': CoinChooserOldestFirst,
                  'Privacy': CoinChooserPrivacy}
+
+def get_name(config):
+    kind = config.get('coin_chooser')
+    if not kind in COIN_CHOOSERS:
+        kind = 'Priority'
+    return kind
+
+def get_coin_chooser(config):
+    klass = COIN_CHOOSERS[get_name(config)]
+    return klass()

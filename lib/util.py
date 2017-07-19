@@ -1,3 +1,28 @@
+#!/usr/bin/env python
+#
+# Electrum - lightweight Bitcoin client
+# Copyright (C) 2011 Thomas Voegtlin
+#
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import os, sys, re, json
 import platform
 import shutil
@@ -11,6 +36,7 @@ import threading
 from i18n import _
 
 base_units = {'BTC':8, 'mBTC':5, 'uBTC':2}
+fee_levels = [_('Within 25 blocks'), _('Within 10 blocks'), _('Within 5 blocks'), _('Within 2 blocks'), _('In the next block')]
 
 def normalize_version(v):
     return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
@@ -20,6 +46,12 @@ class NotEnoughFunds(Exception): pass
 class InvalidPassword(Exception):
     def __str__(self):
         return _("Incorrect password")
+
+# Throw this exception to unwind the stack like when an error occurs.
+# However unlike other exceptions the user won't be informed.
+class UserCancelled(Exception):
+    '''An exception that is suppressed from the user'''
+    pass
 
 class MyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -117,6 +149,12 @@ class DaemonThread(threading.Thread, PrintError):
         with self.running_lock:
             self.running = False
 
+    def on_stop(self):
+        if 'ANDROID_DATA' in os.environ:
+            import jnius
+            jnius.detach()
+            self.print_error("jnius detach")
+        self.print_error("stopped")
 
 
 is_verbose = False
@@ -149,39 +187,70 @@ def json_encode(obj):
 
 def json_decode(x):
     try:
-        return json.loads(x, parse_float=decimal.Decimal)
+        return json.loads(x, parse_float=Decimal)
     except:
         return x
 
 # decorator that prints execution time
 def profiler(func):
-    def do_profile(func, args):
+    def do_profile(func, args, kw_args):
         n = func.func_name
         t0 = time.time()
-        o = apply(func, args)
+        o = func(*args, **kw_args)
         t = time.time() - t0
         print_error("[profiler]", n, "%.4f"%t)
         return o
-    return lambda *args: do_profile(func, args)
+    return lambda *args, **kw_args: do_profile(func, args, kw_args)
 
 
+def android_ext_dir():
+    import jnius
+    env = jnius.autoclass('android.os.Environment')
+    return env.getExternalStorageDirectory().getPath()
+
+def android_data_dir():
+    import jnius
+    PythonActivity = jnius.autoclass('org.kivy.android.PythonActivity')
+    return PythonActivity.mActivity.getFilesDir().getPath() + '/data'
+
+def android_headers_path():
+    path = android_ext_dir() + '/org.electrum.electrum/blockchain_headers'
+    d = os.path.dirname(path)
+    if not os.path.exists(d):
+        os.mkdir(d)
+    return path
+
+def android_check_data_dir():
+    """ if needed, move old directory to sandbox """
+    ext_dir = android_ext_dir()
+    data_dir = android_data_dir()
+    old_electrum_dir = ext_dir + '/electrum'
+    if not os.path.exists(data_dir) and os.path.exists(old_electrum_dir):
+        import shutil
+        new_headers_path = android_headers_path()
+        old_headers_path = old_electrum_dir + '/blockchain_headers'
+        if not os.path.exists(new_headers_path) and os.path.exists(old_headers_path):
+            print_error("Moving headers file to", new_headers_path)
+            shutil.move(old_headers_path, new_headers_path)
+        print_error("Moving data to", data_dir)
+        shutil.move(old_electrum_dir, data_dir)
+    return data_dir
+
+def get_headers_path(config):
+    if 'ANDROID_DATA' in os.environ:
+        return android_headers_path()
+    else:
+        return os.path.join(config.path, 'blockchain_headers')
 
 def user_dir():
-    if "HOME" in os.environ:
-        return os.path.join(os.environ["HOME"], ".electrum")
+    if 'ANDROID_DATA' in os.environ:
+        return android_check_data_dir()
+    elif os.name == 'posix':
+        return os.path.join(os.environ["HOME"], ".electrum-mona")
     elif "APPDATA" in os.environ:
-        return os.path.join(os.environ["APPDATA"], "Electrum")
+        return os.path.join(os.environ["APPDATA"], "Electrum-MONA")
     elif "LOCALAPPDATA" in os.environ:
-        return os.path.join(os.environ["LOCALAPPDATA"], "Electrum")
-    elif 'ANDROID_DATA' in os.environ:
-        try:
-            import jnius
-            env  = jnius.autoclass('android.os.Environment')
-            _dir =  env.getExternalStorageDirectory().getPath()
-            return _dir + '/electrum/'
-        except ImportError:
-            pass
-        return "/sdcard/electrum/"
+        return os.path.join(os.environ["LOCALAPPDATA"], "Electrum-MONA")
     else:
         #raise Exception("No home directory found in environment variables.")
         return
@@ -291,11 +360,17 @@ block_explorer_info = {
                         {'tx': 'tx/info', 'addr': 'address/info'}),
     'Blocktrail.com': ('https://www.blocktrail.com/BTC',
                         {'tx': 'tx', 'addr': 'address'}),
+    'BTC.com': ('https://chain.btc.com',
+                        {'tx': 'tx', 'addr': 'address'}),
     'Chain.so': ('https://www.chain.so',
                         {'tx': 'tx/BTC', 'addr': 'address/BTC'}),
     'Insight.is': ('https://insight.bitpay.com',
                         {'tx': 'tx', 'addr': 'address'}),
     'TradeBlock.com': ('https://tradeblock.com/blockchain',
+                        {'tx': 'tx', 'addr': 'address'}),
+    'BlockCypher.com': ('https://live.blockcypher.com/btc',
+                        {'tx': 'tx', 'addr': 'address'}),
+    'system default': ('blockchain:',
                         {'tx': 'tx', 'addr': 'address'}),
 }
 
@@ -324,12 +399,13 @@ def parse_URI(uri, on_pr=None):
     from bitcoin import COIN
 
     if ':' not in uri:
-        assert bitcoin.is_address(uri)
+        if not bitcoin.is_address(uri):
+            raise BaseException("Not a bitcoin address")
         return {'address': uri}
 
     u = urlparse.urlparse(uri)
-    assert u.scheme == 'bitcoin'
-
+    if u.scheme != 'bitcoin':
+        raise BaseException("Not a bitcoin URI")
     address = u.path
 
     # python for android fails to parse query
@@ -345,7 +421,8 @@ def parse_URI(uri, on_pr=None):
 
     out = {k: v[0] for k, v in pq.items()}
     if address:
-        assert bitcoin.is_address(address)
+        if not bitcoin.is_address(address):
+            raise BaseException("Invalid bitcoin address:" + address)
         out['address'] = address
     if 'amount' in out:
         am = out['amount']
@@ -432,6 +509,8 @@ import socket
 import errno
 import json
 import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
 import time
 
 class SocketPipe:
@@ -459,7 +538,7 @@ class SocketPipe:
                 raise timeout
             except ssl.SSLError:
                 raise timeout
-            except socket.error, err:
+            except socket.error as err:
                 if err.errno == 60:
                     raise timeout
                 elif err.errno in [11, 35, 10035]:
@@ -544,37 +623,6 @@ class QueuePipe:
     def send_all(self, requests):
         for request in requests:
             self.send(request)
-
-
-
-class StoreDict(dict):
-
-    def __init__(self, config, name):
-        self.config = config
-        self.path = os.path.join(self.config.path, name)
-        self.load()
-
-    def load(self):
-        try:
-            with open(self.path, 'r') as f:
-                self.update(json.loads(f.read()))
-        except:
-            pass
-
-    def save(self):
-        with open(self.path, 'w') as f:
-            s = json.dumps(self, indent=4, sort_keys=True)
-            r = f.write(s)
-
-    def __setitem__(self, key, value):
-        dict.__setitem__(self, key, value)
-        self.save()
-
-    def pop(self, key):
-        if key in self.keys():
-            dict.pop(self, key)
-            self.save()
-
 
 
 

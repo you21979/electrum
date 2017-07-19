@@ -3,7 +3,7 @@ from kivy.factory import Factory
 from kivy.properties import ObjectProperty
 from kivy.lang import Builder
 
-from electrum.i18n import _
+from electrum_gui.kivy.i18n import _
 from electrum.util import base_units
 
 import os
@@ -14,63 +14,51 @@ Builder.load_string('''
 <WalletDialog@Popup>:
     title: _('Wallets')
     id: popup
-    path: app.wallet.storage.path
-    on_path:
-        button.text = _('Open') if os.path.exists(popup.path) else _('Create')
+    path: os.path.dirname(app.get_wallet_path())
     BoxLayout:
         orientation: 'vertical'
-        BoxLayout:
-            height: '48dp'
-            size_hint_y: None
-            orientation: 'horizontal'
-            Label:
-                text: _('Wallet') + ': '
-                height: '48dp'
-                size_hint_y: None
-            Button:
-                id: wallet_name
-                height: '48dp'
-                size_hint_y: None
-                text: os.path.basename(app.wallet.storage.path)
-                on_release:
-                    root.name_dialog()
-                on_text:
-                    popup.path = os.path.join(wallet_selector.path, self.text)
-        Widget
-            size_hint_y: None
+        padding: '10dp'
         FileChooserListView:
             id: wallet_selector
-            path: os.path.dirname(app.wallet.storage.path)
-            on_selection:
-                wallet_name.text = os.path.basename(self.selection[0]) if self.selection else ''
-            size_hint_y: 0.5
+            dirselect: False
+            filter_dirs: True
+            filter: '*.*'
+            path: root.path
+            rootpath: root.path
+            size_hint_y: 0.6
         Widget
             size_hint_y: 0.1
-
         GridLayout:
-            cols: 2
-            size_hint_y: None
+            cols: 3
+            size_hint_y: 0.1
             Button:
-                size_hint: 0.5, None
+                id: open_button
+                size_hint: 0.1, None
                 height: '48dp'
-                text: _('Cancel')
+                text: _('New')
                 on_release:
                     popup.dismiss()
+                    root.new_wallet(app, wallet_selector.path)
             Button:
-                id: button
-                size_hint: 0.5, None
+                id: open_button
+                size_hint: 0.1, None
                 height: '48dp'
-                text: _('Open') if os.path.exists(popup.path) else _('Create')
+                text: _('Open')
+                disabled: not wallet_selector.selection
                 on_release:
                     popup.dismiss()
-                    app.load_wallet_by_name(popup.path)
+                    root.open_wallet(app)
 ''')
 
 class WalletDialog(Factory.Popup):
-    def name_dialog(self):
+
+    def new_wallet(self, app, dirname):
         def cb(text):
             if text:
-                self.ids.wallet_name.text = text
+                app.load_wallet_by_name(os.path.join(dirname, text))
         d = LabelDialog(_('Enter wallet name'), '', cb)
         d.open()
+
+    def open_wallet(self, app):
+        app.load_wallet_by_name(self.ids.wallet_selector.selection[0])
 

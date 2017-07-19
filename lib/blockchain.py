@@ -3,56 +3,101 @@
 # Electrum - lightweight Bitcoin client
 # Copyright (C) 2012 thomasv@ecdsa.org
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 
 
 import os
 import util
+import bitcoin
 from bitcoin import *
 
-MAX_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+try:
+    from ltc_scrypt import getPoWHash
+except ImportError:
+    util.print_msg("Warning: ltc_scrypt not available, using fallback")
+    #from scrypt import scrypt_1024_1_1_80 as getPoWHash
+
+MAX_TARGET = 0x00000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 class Blockchain(util.PrintError):
     '''Manages blockchain headers and their verification'''
     def __init__(self, config, network):
         self.config = config
         self.network = network
-        self.headers_url = "https://headers.electrum.org/blockchain_headers"
-        self.local_height = 0
+        self.checkpoint_height, self.checkpoint_hash = self.get_checkpoint()
+        self.check_truncate_headers()
         self.set_local_height()
 
     def height(self):
         return self.local_height
 
     def init(self):
-        self.init_headers_file()
-        self.set_local_height()
-        self.print_error("%d blocks" % self.local_height)
+        import threading
+        if os.path.exists(self.path()):
+            self.downloading_headers = False
+            return
+        self.downloading_headers = True
+        t = threading.Thread(target = self.init_headers_file)
+        t.daemon = True
+        t.start()
+
+    def pass_checkpoint(self, header):
+        if type(header) is not dict:
+            return False
+        if header.get('block_height') != self.checkpoint_height:
+            return True
+        if header.get('prev_block_hash') is None:
+            header['prev_block_hash'] = '00'*32
+        try:
+            _hash = self.hash_header(header)
+        except:
+            return False
+        return _hash == self.checkpoint_hash
 
     def verify_header(self, header, prev_header, bits, target):
         prev_hash = self.hash_header(prev_header)
-        assert prev_hash == header.get('prev_block_hash'), "prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash'))
-        assert bits == header.get('bits'), "bits mismatch: %s vs %s" % (bits, header.get('bits'))
-        _hash = self.hash_header(header)
-        assert int('0x' + _hash, 16) <= target, "insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target)
+        #_hash = self.pow_hash_header(header) # TODO
+        if prev_hash != header.get('prev_block_hash'):
+            raise BaseException("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
+        if not self.pass_checkpoint(header):
+            raise BaseException('failed checkpoint')
+        if self.checkpoint_height == header.get('block_height'):
+            self.print_error("validated checkpoint", self.checkpoint_height)
+        if bitcoin.TESTNET:
+            return
+        if bits != header.get('bits'):
+            # TODO
+            #raise BaseException("bits mismatch: %s vs %s" % (bits, header.get('bits')))
+            pass
+        #if int('0x' + _hash, 16) > target:
+            # TODO
+            #raise BaseException("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))
 
     def verify_chain(self, chain):
         first_header = chain[0]
         prev_header = self.read_header(first_header.get('block_height') - 1)
         for header in chain:
             height = header.get('block_height')
-            bits, target = self.get_target(height / 2016, chain)
+            bits, target = self.get_target(height / 2016, chain) # TODO
             self.verify_header(header, prev_header, bits, target)
             prev_header = header
 
@@ -60,11 +105,11 @@ class Blockchain(util.PrintError):
         num = len(data) / 80
         prev_header = None
         if index != 0:
-            prev_header = self.read_header(index*2016 - 1)
+            prev_header = self.read_header(index*2016 - 1) # TODO
         bits, target = self.get_target(index)
         for i in range(num):
             raw_header = data[i*80:(i+1) * 80]
-            header = self.deserialize_header(raw_header)
+            header = self.deserialize_header(raw_header, index*2016 + i)
             self.verify_header(header, prev_header, bits, target)
             prev_header = header
 
@@ -77,7 +122,7 @@ class Blockchain(util.PrintError):
             + int_to_hex(int(res.get('nonce')), 4)
         return s
 
-    def deserialize_header(self, s):
+    def deserialize_header(self, s, height):
         hex_to_int = lambda s: int('0x' + s[::-1].encode('hex'), 16)
         h = {}
         h['version'] = hex_to_int(s[0:4])
@@ -86,6 +131,7 @@ class Blockchain(util.PrintError):
         h['timestamp'] = hex_to_int(s[68:72])
         h['bits'] = hex_to_int(s[72:76])
         h['nonce'] = hex_to_int(s[76:80])
+        h['block_height'] = height
         return h
 
     def hash_header(self, header):
@@ -93,22 +139,27 @@ class Blockchain(util.PrintError):
             return '0' * 64
         return hash_encode(Hash(self.serialize_header(header).decode('hex')))
 
+    def pow_hash_header(self, header):
+        return hash_encode(getPoWHash(self.serialize_header(header).decode('hex')))
+
     def path(self):
-        return os.path.join(self.config.path, 'blockchain_headers')
+        return util.get_headers_path(self.config)
 
     def init_headers_file(self):
         filename = self.path()
-        if os.path.exists(filename):
-            return
         try:
             import urllib, socket
             socket.setdefaulttimeout(30)
-            self.print_error("downloading ", self.headers_url)
-            urllib.urlretrieve(self.headers_url, filename)
+            self.print_error("downloading ", bitcoin.HEADERS_URL)
+            urllib.urlretrieve(bitcoin.HEADERS_URL, filename + '.tmp')
+            os.rename(filename + '.tmp', filename)
             self.print_error("done.")
         except Exception:
             self.print_error("download failed. creating file", filename)
             open(filename, 'wb+').close()
+        self.downloading_headers = False
+        self.set_local_height()
+        self.print_error("%d blocks" % self.local_height)
 
     def save_chunk(self, index, chunk):
         filename = self.path()
@@ -130,6 +181,7 @@ class Blockchain(util.PrintError):
         self.set_local_height()
 
     def set_local_height(self):
+        self.local_height = 0
         name = self.path()
         if os.path.exists(name):
             h = os.path.getsize(name)/80 - 1
@@ -144,29 +196,60 @@ class Blockchain(util.PrintError):
             h = f.read(80)
             f.close()
             if len(h) == 80:
-                h = self.deserialize_header(h)
+                h = self.deserialize_header(h, block_height)
                 return h
 
+    def BIP9(self, height, flag):
+        v = self.read_header(height)['version']
+        return ((v & 0xE0000000) == 0x20000000) and ((v & flag) == flag)
+
+    def segwit_support(self, N=144):
+        h = self.local_height
+        return sum([self.BIP9(h-i, 2) for i in range(N)])*10000/N/100.
+
+    def check_truncate_headers(self):
+        checkpoint = self.read_header(self.checkpoint_height)
+        if checkpoint is None:
+            return
+        if self.hash_header(checkpoint) == self.checkpoint_hash:
+            return
+        self.print_error('checkpoint mismatch:', self.hash_header(checkpoint), self.checkpoint_hash)
+        self.print_error('Truncating headers file at height %d'%self.checkpoint_height)
+        name = self.path()
+        f = open(name, 'rb+')
+        f.seek(self.checkpoint_height * 80)
+        f.truncate()
+        f.close()
+
     def get_target(self, index, chain=None):
+        if bitcoin.TESTNET:
+            return 0, 0
         if index == 0:
-            return 0x1d00ffff, MAX_TARGET
-        first = self.read_header((index-1) * 2016)
-        last = self.read_header(index*2016 - 1)
+            return 0x1e0ffff0, MAX_TARGET
+        if index == 1:
+            first = self.read_header(0)
+        else:
+            first = self.read_header((index-1) * 2016 - 1) # TODO
+        last = self.read_header(index*2016 - 1) # TODO
         if last is None:
             for h in chain:
-                if h.get('block_height') == index*2016 - 1:
+                if h.get('block_height') == index*2016 - 1: # TODO
                     last = h
         assert last is not None
         # bits to target
         bits = last.get('bits')
         bitsN = (bits >> 24) & 0xff
-        assert bitsN >= 0x03 and bitsN <= 0x1d, "First part of bits should be in [0x03, 0x1d]"
+        if not (bitsN >= 0x03 and bitsN <= 0x1d):
+            # TODO
+            #raise BaseException("First part of bits should be in [0x03, 0x1d]")
+            pass
         bitsBase = bits & 0xffffff
-        assert bitsBase >= 0x8000 and bitsBase <= 0x7fffff, "Second part of bits should be in [0x8000, 0x7fffff]"
+        if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
+            raise BaseException("Second part of bits should be in [0x8000, 0x7fffff]")
         target = bitsBase << (8 * (bitsN-3))
         # new target
         nActualTimespan = last.get('timestamp') - first.get('timestamp')
-        nTargetTimespan = 14 * 24 * 60 * 60
+        nTargetTimespan = 84 * 60 * 60 # TODO
         nActualTimespan = max(nActualTimespan, nTargetTimespan / 4)
         nActualTimespan = min(nActualTimespan, nTargetTimespan * 4)
         new_target = min(MAX_TARGET, (target*nActualTimespan) / nTargetTimespan)
@@ -179,37 +262,23 @@ class Blockchain(util.PrintError):
             bitsN += 1
             bitsBase >>= 8
         new_bits = bitsN << 24 | bitsBase
-        return new_bits, bitsBase << (8 * (bitsN-3))
+        return new_bits, new_target
 
-    def connect_header(self, chain, header):
-        '''Builds a header chain until it connects.  Returns True if it has
-        successfully connected, False if verification failed, otherwise the
-        height of the next header needed.'''
-        chain.append(header)  # Ordered by decreasing height
+    def can_connect(self, header):
         previous_height = header['block_height'] - 1
         previous_header = self.read_header(previous_height)
-
-        # Missing header, request it
         if not previous_header:
-            return previous_height
-
-        # Does it connect to my chain?
+            return False
         prev_hash = self.hash_header(previous_header)
         if prev_hash != header.get('prev_block_hash'):
-            self.print_error("reorg")
-            return previous_height
-
-        # The chain is complete.  Reverse to order by increasing height
-        chain.reverse()
-        try:
-            self.verify_chain(chain)
-            self.print_error("connected at height:", previous_height)
-            for header in chain:
-                self.save_header(header)
-            return True
-        except BaseException as e:
-            self.print_error(str(e))
             return False
+        height = header.get('block_height')
+        bits, target = self.get_target(height / 2016)
+        try:
+            self.verify_header(header, previous_header, bits, target)
+        except:
+            return False
+        return True
 
     def connect_chunk(self, idx, hexdata):
         try:
@@ -217,7 +286,19 @@ class Blockchain(util.PrintError):
             self.verify_chunk(idx, data)
             self.print_error("validated chunk %d" % idx)
             self.save_chunk(idx, data)
-            return idx + 1
+            return True
         except BaseException as e:
             self.print_error('verify_chunk failed', str(e))
-            return idx - 1
+            return False
+
+    def get_checkpoint(self):
+        height = self.config.get('checkpoint_height', 0)
+        value = self.config.get('checkpoint_value', bitcoin.GENESIS)
+        return (height, value)
+
+    def set_checkpoint(self, height, value):
+        self.checkpoint_height = height
+        self.checkpoint_hash = value
+        self.config.set_key('checkpoint_height', height)
+        self.config.set_key('checkpoint_value', value)
+        self.check_truncate_headers()

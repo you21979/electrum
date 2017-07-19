@@ -1,10 +1,9 @@
 from keepkey import KeepKeyPlugin
 from electrum.util import print_msg
-from electrum.plugins import hook
 
 class KeepKeyCmdLineHandler:
 
-    def get_passphrase(self, msg):
+    def get_passphrase(self, msg, confirm):
         import getpass
         print_msg(msg)
         return getpass.getpass('')
@@ -23,10 +22,4 @@ class KeepKeyCmdLineHandler:
         print_msg(msg)
 
 class Plugin(KeepKeyPlugin):
-    @hook
-    def cmdline_load_wallet(self, wallet):
-        self.wallet = wallet
-        self.wallet.plugin = self
-        if self.handler is None:
-            self.handler = KeepKeyCmdLineHandler()
-
+    handler = KeepKeyCmdLineHandler()

@@ -25,18 +25,31 @@
         InvoicesLabel:
             text: root.requestor
             shorten: True
+        Widget
         InvoicesLabel:
             text: root.memo
             color: .699, .699, .699, 1
             font_size: '13sp'
             shorten: True
         Widget
-    InvoicesLabel:
-        halign: 'right'
-        font_size: '15sp'
-        size_hint: None, 1
-        width: '110sp'
-        text: root.amount
+    BoxLayout:
+        spacing: '8dp'
+        height: '32dp'
+        orientation: 'vertical'
+        Widget
+        InvoicesLabel:
+            text: root.amount
+            font_size: '15sp'
+            halign: 'right'
+            width: '110sp'
+        Widget
+        InvoicesLabel:
+            text: root.status
+            font_size: '13sp'
+            halign: 'right'
+            color: .699, .699, .699, 1
+        Widget
+
 
 InvoicesScreen:
     name: 'invoices'
@@ -44,12 +57,6 @@ InvoicesScreen:
         orientation: 'vertical'
         spacing: '1dp'
         ScrollView:
-            canvas.before:
-                Color:
-                    rgba: .8901, .8901, .8901, 0
-                Rectangle:
-                    size: self.size
-                    pos: self.pos
             GridLayout:
                 cols: 1
                 id: invoices_container

@@ -1,29 +1,32 @@
+import tty, sys
 import curses, datetime, locale
 from decimal import Decimal
-_ = lambda x:x
-from electrum.util import format_satoshis, set_verbosity
-from electrum.util import StoreDict
-from electrum.bitcoin import is_valid, COIN
+import getpass
 
+from electrum.util import format_satoshis, set_verbosity
+from electrum.bitcoin import is_valid, COIN, TYPE_ADDRESS
 from electrum import Wallet, WalletStorage
 
-import tty, sys
+_ = lambda x:x
+
 
 
 class ElectrumGui:
 
-    def __init__(self, config, network, plugins):
+    def __init__(self, config, daemon, plugins):
 
         self.config = config
-        self.network = network
+        self.network = daemon.network
         storage = WalletStorage(config.get_wallet_path())
         if not storage.file_exists:
             print "Wallet not found. try 'electrum create'"
             exit()
-
+        if storage.is_encrypted():
+            password = getpass.getpass('Password:', stream=None)
+            storage.decrypt(password)
         self.wallet = Wallet(storage)
         self.wallet.start_threads(self.network)
-        self.contacts = StoreDict(self.config, 'contacts')
+        self.contacts = self.wallet.contacts
 
         locale.setlocale(locale.LC_ALL, '')
         self.encoding = locale.getpreferredencoding()
@@ -105,16 +108,15 @@ class ElectrumGui:
 
         b = 0
         self.history = []
-
         for item in self.wallet.get_history():
-            tx_hash, conf, value, timestamp, balance = item
+            tx_hash, height, conf, timestamp, value, balance = item
             if conf:
                 try:
                     time_str = datetime.datetime.fromtimestamp(timestamp).isoformat(' ')[:-3]
                 except Exception:
                     time_str = "------"
             else:
-                time_str = 'pending'
+                time_str = 'unconfirmed'
 
             label = self.wallet.get_label(tx_hash)
             if len(label) > 40:
@@ -146,7 +148,7 @@ class ElectrumGui:
         self.stdscr.addstr(self.maxy -1, self.maxx-30, ' '.join([_("Settings"), _("Network"), _("Quit")]))
 
     def print_receive(self):
-        addr = self.wallet.get_unused_address(None)
+        addr = self.wallet.get_receiving_address()
         self.stdscr.addstr(2, 1, "Address: "+addr)
         self.print_qr(addr)
 
@@ -156,7 +158,7 @@ class ElectrumGui:
 
     def print_addresses(self):
         fmt = "%-35s  %-30s"
-        messages = map(lambda addr: fmt % (addr, self.wallet.labels.get(addr,"")), self.wallet.addresses())
+        messages = map(lambda addr: fmt % (addr, self.wallet.labels.get(addr,"")), self.wallet.get_addresses())
         self.print_list(messages,   fmt % ("Address", "Label"))
 
     def print_edit_line(self, y, label, text, index, size):
@@ -321,15 +323,14 @@ class ElectrumGui:
             self.show_message(_('Invalid Fee'))
             return
 
-        if self.wallet.use_encryption:
+        if self.wallet.has_password():
             password = self.password_dialog()
             if not password:
                 return
         else:
             password = None
-
         try:
-            tx = self.wallet.mktx( [("address", self.str_recipient, amount)], password, self.config, fee)
+            tx = self.wallet.mktx([(TYPE_ADDRESS, self.str_recipient, amount)], password, self.config, fee)
         except Exception as e:
             self.show_message(str(e))
             return
@@ -337,10 +338,8 @@ class ElectrumGui:
         if self.str_description:
             self.wallet.labels[tx.hash()] = self.str_description
 
-        h = self.wallet.send_tx(tx)
         self.show_message(_("Please wait..."), getchar=False)
-        self.wallet.tx_event.wait()
-        status, msg = self.wallet.receive_tx( h, tx )
+        status, msg = self.network.broadcast(tx)
 
         if status:
             self.show_message(_('Payment sent.'))
@@ -359,16 +358,15 @@ class ElectrumGui:
         w.refresh()
         if getchar: c = self.stdscr.getch()
 
-
     def run_popup(self, title, items):
         return self.run_dialog(title, map(lambda x: {'type':'button','label':x}, items), interval=1, y_pos = self.pos+3)
 
-
     def network_dialog(self):
-        if not self.network: return
-        host, port, protocol, proxy_config, auto_connect = self.network.get_parameters()
+        if not self.network:
+            return
+        params = self.network.get_parameters()
+        host, port, protocol, proxy_config, auto_connect = params
         srv = 'auto-connect' if auto_connect else self.network.default_server
-
         out = self.run_dialog('Network', [
             {'label':'server', 'type':'str', 'value':srv},
             {'label':'proxy', 'type':'str', 'value':self.config.get('proxy', '')},
@@ -383,18 +381,11 @@ class ElectrumGui:
                     except Exception:
                         self.show_message("Error:" + server + "\nIn doubt, type \"auto-connect\"")
                         return False
-
-                if out.get('proxy'):
-                    proxy = self.parse_proxy_options(out.get('proxy'))
-                else:
-                    proxy = None
-
+                proxy = self.parse_proxy_options(out.get('proxy')) if out.get('proxy') else None
                 self.network.set_parameters(host, port, protocol, proxy, auto_connect)
 
-
-
     def settings_dialog(self):
-        fee = str(Decimal(self.wallet.fee_per_kb(self.config)) / COIN)
+        fee = str(Decimal(self.config.fee_per_kb()) / COIN)
         out = self.run_dialog('Settings', [
             {'label':'Default fee', 'type':'satoshis', 'value': fee }
             ], buttons = 1)

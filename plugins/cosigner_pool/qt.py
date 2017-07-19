@@ -3,18 +3,25 @@
 # Electrum - lightweight Bitcoin client
 # Copyright (C) 2014 Thomas Voegtlin
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import socket
 import threading
@@ -28,6 +35,7 @@ from electrum import bitcoin, util
 from electrum import transaction
 from electrum.plugins import BasePlugin, hook
 from electrum.i18n import _
+from electrum.wallet import Multisig_Wallet
 
 from electrum_gui.qt.transaction_dialog import show_transaction
 
@@ -36,7 +44,7 @@ import traceback
 
 
 PORT = 12344
-HOST = 'ecdsa.net'
+HOST = 'cosigner.electrum.org'
 server = xmlrpclib.ServerProxy('http://%s:%d'%(HOST,PORT), allow_none=True)
 
 
@@ -90,6 +98,11 @@ class Plugin(BasePlugin):
         self.cosigner_list = []
 
     @hook
+    def init_qt(self, gui):
+        for window in gui.windows:
+            self.on_new_window(window)
+
+    @hook
     def on_new_window(self, window):
         self.update(window)
 
@@ -102,7 +115,7 @@ class Plugin(BasePlugin):
 
     def update(self, window):
         wallet = window.wallet
-        if wallet.wallet_type not in ['2of2', '2of3']:
+        if type(wallet) != Multisig_Wallet:
             return
         if self.listener is None:
             self.print_error("starting listener")
@@ -114,10 +127,11 @@ class Plugin(BasePlugin):
             self.listener = None
         self.keys = []
         self.cosigner_list = []
-        for key, xpub in wallet.master_public_keys.items():
-            K = bitcoin.deserialize_xkey(xpub)[-1].encode('hex')
+        for key, keystore in wallet.keystores.items():
+            xpub = keystore.get_master_public_key()
+            K = bitcoin.deserialize_xpub(xpub)[-1].encode('hex')
             _hash = bitcoin.Hash(K).encode('hex')
-            if wallet.master_private_keys.get(key):
+            if not keystore.is_watching_only():
                 self.keys.append((key, _hash, window))
             else:
                 self.cosigner_list.append((window, xpub, K, _hash))
@@ -144,14 +158,13 @@ class Plugin(BasePlugin):
             d.cosigner_send_button.hide()
 
     def cosigner_can_sign(self, tx, cosigner_xpub):
-        from electrum.transaction import x_to_xpub
+        from electrum.keystore import is_xpubkey, parse_xpubkey
         xpub_set = set([])
-        for txin in tx.inputs:
+        for txin in tx.inputs():
             for x_pubkey in txin['x_pubkeys']:
-                xpub = x_to_xpub(x_pubkey)
-                if xpub:
+                if is_xpubkey(x_pubkey):
+                    xpub, s = parse_xpubkey(x_pubkey)
                     xpub_set.add(xpub)
-
         return cosigner_xpub in xpub_set
 
     def do_send(self, tx):
@@ -177,7 +190,7 @@ class Plugin(BasePlugin):
             return
 
         wallet = window.wallet
-        if wallet.use_encryption:
+        if wallet.has_password():
             password = window.password_dialog('An encrypted transaction was retrieved from cosigning pool.\nPlease enter your password to decrypt it.')
             if not password:
                 return
@@ -186,11 +199,11 @@ class Plugin(BasePlugin):
             if not window.question(_("An encrypted transaction was retrieved from cosigning pool.\nDo you want to open it now?")):
                 return
 
-        xprv = wallet.get_master_private_key(key, password)
+        xprv = wallet.keystore.get_master_private_key(password)
         if not xprv:
             return
         try:
-            k = bitcoin.deserialize_xkey(xprv)[-1].encode('hex')
+            k = bitcoin.deserialize_xprv(xprv)[-1].encode('hex')
             EC = bitcoin.EC_KEY(k.decode('hex'))
             message = EC.decrypt_message(message)
         except Exception as e:
