@@ -110,7 +110,7 @@ Section
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\*.*"
   
   ;Files to pack into the installer
-  File /r "dist\electrum-mona\*.*"
+  File /r "dist\electrum\*.*"
   File "..\..\icons\electrum.ico"
 
   ;Store installation folder
